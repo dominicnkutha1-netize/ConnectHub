@@ -1,0 +1,44 @@
+# ConnectHub — local production-like environment
+#
+#   cp .env.example .env        (then set a real JWT_SECRET)
+#   docker compose up --build
+#   open http://localhost:4000
+#
+# This runs exactly what production runs: one container serving the API, the
+# WebSocket transport and the built React client.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: connecthub:local
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # Fails fast if .env is missing the secret — better than a silent default.
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (see .env.example)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    ports:
+      - "${PORT:-4000}:4000"
+    volumes:
+      # Named volumes, not bind mounts: the container writes as a non-root user.
+      - connecthub-data:/app/server/data
+      - connecthub-uploads:/app/server/uploads
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  connecthub-data:
+  connecthub-uploads:

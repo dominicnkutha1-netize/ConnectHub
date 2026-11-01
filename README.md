@@ -1,27 +1,32 @@
 # ConnectHub
 
-**A full-stack social network — auth, profiles, feed, friendships and real-time chat — built from scratch without a framework or a managed backend.**
+**A full-stack social network — auth, profiles, feed, friendships and real-time chat — built from scratch, containerised, and built to be operated.**
 
 <p>
+  <a href="https://github.com/dominicnkutha1-netize/ConnectHub/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dominicnkutha1-netize/ConnectHub/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Node" src="https://img.shields.io/badge/Node.js-20%20%7C%2022-5FA04E?logo=nodedotjs&logoColor=white">
   <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black">
-  <img alt="Node" src="https://img.shields.io/badge/Node.js-Express-5FA04E?logo=nodedotjs&logoColor=white">
   <img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4-010101?logo=socketdotio&logoColor=white">
-  <img alt="JWT" src="https://img.shields.io/badge/Auth-JWT%20%2B%20bcrypt-000000?logo=jsonwebtokens&logoColor=white">
-  <img alt="Vite" src="https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-31%20passing-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
 <!--
-  ⬜ TODO: add a screenshot here. This is the single biggest improvement you can
-  make to this README. Drop a PNG at docs/feed.png and uncomment the line below.
+  ⬜ TODO: add a screenshot here. Drop a PNG at docs/feed.png and uncomment.
 
   ![ConnectHub feed](docs/feed.png)
 -->
 
-Every part of this is hand-rolled: password hashing, token issuing, file uploads,
-the data layer, and the WebSocket transport. No Firebase, no Supabase, no
+Every part of the application is hand-rolled: password hashing, token issuing,
+file uploads, the data layer, and the WebSocket transport. No Firebase, no
 Passport, no ORM. That was the point — I wanted to know what the frameworks
 actually do before I let them do it for me.
+
+The second half of the project is about running it: environment-driven config,
+structured logs, liveness and readiness probes, Prometheus metrics, rate
+limiting, graceful shutdown, a multi-stage container image that runs as
+non-root, and a CI pipeline that tests, audits and smoke-tests the image.
 
 ---
 
@@ -31,6 +36,10 @@ actually do before I let them do it for me.
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
+- [Running in Docker](#running-in-docker)
+- [Operating it](#operating-it)
+- [Configuration](#configuration)
+- [Testing](#testing)
 - [API reference](#api-reference)
 - [Data model](#data-model)
 - [Design decisions](#design-decisions)
@@ -52,12 +61,13 @@ actually do before I let them do it for me.
 | 🤝 **Friendships** | Send, accept and decline requests; stranger suggestions; unfriend |
 | ⚡ **Chat** | Real-time one-to-one messaging over Socket.IO, with per-user rooms and conversation history |
 | 🚪 **Route guards** | Every page is wrapped in an auth check; unauthenticated visits redirect to `/login` |
+| 🩺 **Operations** | Health/readiness probes, Prometheus metrics, JSON logs with request ids, rate limiting, graceful shutdown |
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Client["React 18 + Vite (port 3000)"]
+    subgraph Client["React 18 + Vite"]
         A[Login / Register]
         B[Feed]
         C[Profile]
@@ -77,6 +87,8 @@ flowchart TB
         N["JWT middleware"]
         O["Socket.IO server<br/>room per user"]
         P["db.js<br/>JSON store, debounced write"]
+        R["helmet · CORS allowlist<br/>rate limiting"]
+        S["/healthz /readyz /metrics"]
     end
 
     F -->|Bearer token| N
@@ -85,6 +97,8 @@ flowchart TB
     H & I & J & K & L & M --> P
     O --> P
     P --> Q[("server/data/db.json")]
+    R --- Server
+    S --- Server
 ```
 
 The API is a plain Express app mounted under `/api`, with one router file per
@@ -97,6 +111,10 @@ the same JWT; on connection the socket joins a room named `user_{id}`, and a
 message is delivered by emitting to the recipient's room. That means one user
 with three tabs open gets the message in all three, with no bookkeeping.
 
+In production a single container serves the API, the WebSocket transport and the
+built React client on one origin, so there is no CORS problem and one thing to
+deploy.
+
 ## Tech stack
 
 | Layer | Choice | Why |
@@ -105,28 +123,25 @@ with three tabs open gets the message in all three, with no bookkeeping.
 | Routing | React Router 6 | Auth-guarded routes |
 | Backend | Node.js + Express 4 | One router per domain, easy to reason about |
 | Auth | JWT (30d) + bcryptjs | Stateless sessions, no server-side session store |
-| Uploads | multer | Multipart handling without a cloud dependency |
+| Uploads | multer 2 | Multipart handling without a cloud dependency |
 | Realtime | Socket.IO 4 | Automatic reconnection and room semantics |
 | Storage | JSON file | Zero setup; single-user-scale by design |
+| Logging | pino | Structured JSON, secret redaction built in |
+| Metrics | prom-client | Prometheus-compatible `/metrics` |
+| Security | helmet, express-rate-limit | Headers, CSP and brute-force protection |
+| Packaging | Docker (multi-stage, non-root) | One artifact, same on every machine |
+| CI | GitHub Actions | Tests on Node 20 and 22, client build, image smoke test |
 
 ## Quick start
 
-Requires **Node 18+**.
+Requires **Node 20 or newer**.
 
 ```bash
 git clone https://github.com/dominicnkutha1-netize/ConnectHub.git
 cd ConnectHub
 ```
 
-**1. Generate the JWT secret.** The server refuses to start without it, and it's
-gitignored on purpose — so you must create it once:
-
-```bash
-# from the repo root
-node -e "require('fs').writeFileSync('server/secret.js', 'module.exports = ' + JSON.stringify(require('crypto').randomBytes(32).toString('hex')) + ';')"
-```
-
-**2. Start the API** (port 4000):
+**1. Start the API** (port 4000):
 
 ```bash
 cd server
@@ -134,10 +149,14 @@ npm install
 npm start
 ```
 
-**3. Start the client** (port 3000):
+No secret file is needed for local development. If `JWT_SECRET` is not set, the
+server generates a random key at boot and logs a warning — sessions are lost on
+restart, which is fine locally and deliberately refused in production.
+
+**2. Start the client** (port 3000), in a second terminal:
 
 ```bash
-cd ../client
+cd client
 npm install
 npm run dev
 ```
@@ -146,7 +165,150 @@ Open <http://localhost:3000>, register an account, then open a **private window*
 and register a second account. Send a friend request from one, accept it in the
 other, and the chat between them will update live.
 
-Health check: `curl http://localhost:4000/api/health` → `{"ok":true}`
+Check it is alive:
+
+```bash
+curl http://localhost:4000/healthz
+# {"status":"ok","uptime":3,"env":"development"}
+```
+
+## Running in Docker
+
+One command builds the client, installs production dependencies, and produces a
+single image that serves everything on port 4000.
+
+```bash
+cp .env.example .env
+# put a real 32+ character secret in .env
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+docker compose up --build
+open http://localhost:4000
+```
+
+Or without Compose:
+
+```bash
+docker build -t connecthub .
+docker run --rm -p 4000:4000 \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -v connecthub-data:/app/server/data \
+  connecthub
+```
+
+The image:
+
+- uses a multi-stage build, so the final layer has no client build tools and no
+  dev dependencies
+- runs as an unprivileged `app` user, never root
+- declares a `HEALTHCHECK` that hits `/healthz`
+- keeps data in volumes, so recreating the container does not delete users
+
+## Operating it
+
+### Probes
+
+| Endpoint | Purpose | Expected |
+|---|---|---|
+| `GET /healthz` | Liveness. Is the process running? | `200` with uptime |
+| `GET /readyz` | Readiness. Can it serve traffic? Checks the data store is writable | `200` ready, `503` degraded |
+| `GET /metrics` | Prometheus scrape target | `200` text/plain |
+| `GET /api/health` | Legacy check kept for the client | `200` |
+
+Liveness and readiness are separate on purpose. A failing liveness probe should
+restart the process; a failing readiness probe should only remove it from the
+load balancer. Conflating them is how you get restart loops during a database
+blip.
+
+### Metrics
+
+`/metrics` exposes:
+
+- `connecthub_http_requests_total{method,route,status}`
+- `connecthub_http_request_duration_seconds{method,route,status}` (histogram)
+- `connecthub_process_*` and `connecthub_nodejs_*` from the default collector
+
+Routes that do not match are labelled `unmatched` rather than by path, so a
+scanner cannot create unbounded label cardinality.
+
+### Logs
+
+One JSON object per line, to stdout, ready for any log platform:
+
+```json
+{"level":30,"time":"2026-01-01T10:00:00.000Z","service":"connecthub","env":"production","req":{"id":"...","method":"POST","url":"/api/auth/login"},"res":{"statusCode":200},"responseTime":41,"msg":"request completed"}
+```
+
+Authorization headers, cookies and passwords are redacted before they are
+written. Every response carries `x-request-id`, and an inbound `x-request-id` is
+preserved so a request can be traced across services.
+
+### Graceful shutdown
+
+On `SIGTERM` or `SIGINT` the process:
+
+1. stops accepting new connections,
+2. disconnects sockets,
+3. flushes the debounced write to disk,
+4. exits `0`.
+
+Without step 3, every deploy silently discards up to 150 ms of user activity.
+A 10-second watchdog forces exit if something hangs.
+
+### Rate limiting
+
+`/api/auth/*` allows 20 requests per 15 minutes per IP, the rest of `/api`
+allows 300 per minute. Probes and `/metrics` are never throttled. Configure with
+`AUTH_RATE_MAX`, `AUTH_RATE_WINDOW_MS`, `API_RATE_MAX`, `API_RATE_WINDOW_MS`, or
+set `RATE_LIMIT=off`.
+
+## Configuration
+
+Everything is environment-driven; see [`.env.example`](.env.example).
+
+| Variable | Default | Notes |
+|---|---|---|
+| `NODE_ENV` | `development` | `production` requires `JWT_SECRET` and serves the built client |
+| `PORT` | `4000` | |
+| `JWT_SECRET` | — | **Required in production**, 32+ characters |
+| `JWT_EXPIRES_IN` | `30d` | Any `jsonwebtoken` duration |
+| `CORS_ORIGINS` | `*` | Comma-separated allowlist in production |
+| `LOG_LEVEL` | `info` | `silent` in tests |
+| `TRUST_PROXY` | `true` | Set `false` if exposed with no proxy |
+| `DATA_DIR` | `server/data` | Where `db.json` lives |
+| `UPLOADS_DIR` | `server/uploads` | Where photos are written |
+| `MAX_UPLOAD_BYTES` | `5242880` | 5 MB |
+| `BODY_LIMIT` | `100kb` | JSON body cap |
+| `RATE_LIMIT` | `on` | `off` disables both limiters |
+
+The server refuses to start in production without a valid `JWT_SECRET`, rather
+than falling back to a random key and quietly logging everyone out on each
+deploy.
+
+## Testing
+
+```bash
+cd server
+npm test              # 31 tests, node:test + supertest
+npm run test:coverage # same, with V8 coverage
+```
+
+The suite drives the real Express app over HTTP with supertest. Every test file
+gets its own temporary data directory, so tests never touch a developer's
+database and can run in parallel.
+
+Covered today: auth (registration, normalisation, duplicate and weak-password
+rejection, login, forged tokens), authorisation boundaries, the post lifecycle
+(likes, comments, deletion, feed scoping), uploads (valid image, wrong type,
+unauthenticated, no file), and the operational surface (probes, metrics,
+security headers, request ids, JSON 404s).
+
+Not covered yet: the React client, and Socket.IO chat. Both are on the roadmap.
+
+CI runs the suite on Node 20 and 22, builds the client, fails on high-severity
+dependency advisories, then builds the Docker image, starts it, and asserts that
+`/healthz`, `/readyz` and `/` respond and that the container is not running as
+root.
 
 ## API reference
 
@@ -206,22 +368,24 @@ except the auth routes.
 Six collections in `server/data/db.json`:
 
 ```
-users        id, name, email, passwordHash, bio, photoUrl, createdAt
+users        id, name, email, passwordHash, bio, photo, createdAt
 posts        id, userId, content, createdAt
 comments     id, postId, userId, content, createdAt
 likes        id, postId, userId
-friendships  id, requesterId, addresseeId, status(pending|accepted), createdAt
+friendships  id, fromId, toId, status(pending|accepted), createdAt
 messages     id, fromId, toId, content, createdAt
 ```
 
-Writes are debounced 150 ms and flushed once, so a burst of socket messages
-doesn't rewrite the file per message. IDs are allocated with a max-plus-one scan.
+Writes are debounced 150 ms and flushed once, so a burst of socket messages does
+not rewrite the file per message. Writes are atomic (temp file + rename), so a
+crash mid-write cannot corrupt the store. IDs are allocated with a max-plus-one
+scan.
 
 ## Design decisions
 
 **A JSON file instead of a database.** Deliberate. The goal was to implement
-auth, relationships and persistence with nothing hiding the mechanics. It's the
-first thing I'd replace for anything real — see the roadmap.
+auth, relationships and persistence with nothing hiding the mechanics. It is the
+first thing I would replace for anything real — see the roadmap.
 
 **Two transports, not one.** REST for request/response, WebSocket only for what
 needs to be pushed. Trying to do chat over polling was the first version, and it
@@ -229,34 +393,44 @@ was both slower and more code.
 
 **Server-assigned message IDs.** The client sends `chat:send` and waits for
 `chat:sent` to render. Optimistic rendering would feel faster and would need
-reconciliation on failure — a tradeoff I'd revisit.
+reconciliation on failure — a tradeoff I would revisit.
 
 **Auth state in a React context, not a store.** There are exactly three pieces of
 global state (user, role, logout). A store would be a dependency earning nothing.
 
+**Fail fast on configuration.** A missing production secret crashes at boot with
+instructions, instead of starting in a state that will silently log users out on
+the next deploy.
+
 ## Known limitations
 
-Honest list, because a project that claims to have no weaknesses hasn't been
+Honest list, because a project that claims to have no weaknesses has not been
 looked at hard enough.
 
 - **JWT in `localStorage`** — readable by any injected script. `httpOnly` cookies
-  with CSRF protection is the correct design.
-- **CORS is set to `origin: '*'`** — fine for local development, unacceptable in
-  production.
-- **No rate limiting** on login, so the password endpoint is brute-forceable.
-- **No tests.** Zero automated coverage — the highest-value gap in this repo.
-- **JSON store doesn't scale** and has no transactions or referential integrity.
+  with CSRF protection is the correct design, and is next on the roadmap.
+- **JSON store doesn't scale**, has no transactions, and no referential
+  integrity. It is also not shared between replicas, so the service cannot be
+  horizontally scaled yet.
 - **No pagination** anywhere; the feed loads everything.
-- **Uploads aren't validated** for type or size beyond multer's default.
+- **Client and Socket.IO have no automated tests** — the API does.
+- **No deployment yet.** The image builds and is smoke-tested in CI, but there is
+  no public instance.
+- **Rate limiting is per-process and in-memory**, so it needs Redis once there is
+  more than one replica.
 
 ## Roadmap
 
-1. **Tests** — supertest for the API routes, React Testing Library for the auth flow. First, because it's the most visible gap.
-2. **PostgreSQL + Prisma** — real schema, migrations, foreign keys.
-3. **`httpOnly` cookie sessions** + CSRF token, replacing `localStorage`.
-4. **Rate limiting** with `express-rate-limit` on auth routes.
+1. ✅ **Tests** — 31 API tests with `node:test` + supertest, run in CI.
+2. ✅ **Operability** — probes, metrics, structured logs, graceful shutdown,
+   Docker image, CI pipeline.
+3. **PostgreSQL + Prisma** — real schema, migrations, foreign keys, connection
+   pooling.
+4. **`httpOnly` cookie sessions** + CSRF token, replacing `localStorage`.
 5. **Pagination** on the feed and message history.
-6. **Deploy** — API on Render, client on Vercel, and put the URL at the top of this file.
+6. **Deploy** — public URL, then a Grafana dashboard and alert rules on top of
+   `/metrics`.
+7. **Client tests** — React Testing Library on the auth and feed flows.
 
 ## License
 

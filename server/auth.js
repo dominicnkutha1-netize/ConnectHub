@@ -1,5 +1,7 @@
+'use strict';
+
 const jwt = require('jsonwebtoken');
-const SECRET = require('./secret');
+const config = require('./config');
 
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
@@ -7,16 +9,16 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const payload = jwt.verify(header.slice(7), SECRET);
+    const payload = jwt.verify(header.slice(7), config.jwtSecret);
     req.userId = payload.id;
     next();
-  } catch (e) {
+  } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
 function signToken(id) {
-  return jwt.sign({ id }, SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 }
 
-module.exports = { authenticate, signToken, SECRET };
+module.exports = { authenticate, signToken };
