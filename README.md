@@ -3,7 +3,7 @@
 **A full-stack social network — auth, profiles, feed, friendships and real-time chat — built from scratch, containerised, and built to be operated.**
 
 <p>
-  <a href="https://github.com/dominicnkutha1-netize/ConnectHub/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dominicnkutha1-netize/ConnectHub/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/dominicnkutha1-netize/connecthub/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dominicnkutha1-netize/connecthub/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Node" src="https://img.shields.io/badge/Node.js-20%20%7C%2022-5FA04E?logo=nodedotjs&logoColor=white">
   <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black">
   <img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4-010101?logo=socketdotio&logoColor=white">
@@ -138,7 +138,7 @@ deploy.
 Requires **Node 20 or newer**.
 
 ```bash
-git clone https://github.com/dominicnkutha1-netize/ConnectHub.git
+git clone https://github.com/dominicnkutha1-netize/connecthub.git
 cd ConnectHub
 ```
 
