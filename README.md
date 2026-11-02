@@ -12,11 +12,34 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-<!--
-  ⬜ TODO: add a screenshot here. Drop a PNG at docs/feed.png and uncomment.
+<p align="center">
+  <a href="docs/screenshots/feed.png"><img src="docs/screenshots/feed.png" width="100%" alt="ConnectHub feed: a post composer at the top, then posts from friends with like and comment controls"></a>
+</p>
 
-  ![ConnectHub feed](docs/feed.png)
--->
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/login.png"><img src="docs/screenshots/login.png" alt="ConnectHub login screen with email and password fields"></a><br>
+      <sub><b>Log in</b> — email and password checked against bcrypt hashes; the session is a 30-day JWT.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/chat.png"><img src="docs/screenshots/chat.png" alt="ConnectHub chat: conversation list on the left, message bubbles on the right"></a><br>
+      <sub><b>Chat</b> — one-to-one messaging over Socket.IO, with per-conversation history.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/profile.png"><img src="docs/screenshots/profile.png" alt="ConnectHub profile page showing name, bio, photo upload and your own posts"></a><br>
+      <sub><b>Profile</b> — edit name and bio, upload a photo, delete your own posts.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/friends.png"><img src="docs/screenshots/friends.png" alt="ConnectHub friends page: incoming requests, your friends and suggestions"></a><br>
+      <sub><b>Friends</b> — requests you accept or decline, your friends, and people you may know.</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>Captured from a real local instance seeded with the demo data described in [Deployment](#deployment). Nothing is mocked or drawn by hand.</sub>
 
 Every part of the application is hand-rolled: password hashing, token issuing,
 file uploads, the data layer, and the WebSocket transport. No Firebase, no
