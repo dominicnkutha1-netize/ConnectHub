@@ -15,6 +15,11 @@ const config = require('./config');
 const logger = require('./logger');
 const { createApp } = require('./app');
 const { data, scheduleSave, flush, getId } = require('./db');
+const { seedDemoData } = require('./seed');
+
+// Before the port opens: on an ephemeral host the store is empty after every
+// restart, and a visitor should never be the first thing to see that.
+const seed = seedDemoData();
 
 const app = createApp();
 const server = http.createServer(app);
@@ -93,6 +98,19 @@ server.listen(config.port, () => {
       'JWT_SECRET is not set. Using a random key for this process only — ' +
         'every restart will invalidate all sessions. Set JWT_SECRET before deploying.'
     );
+  }
+
+  if (seed.seeded) {
+    logger.info(
+      {
+        ...seed.counts,
+        demoEmail: seed.credentials.email,
+        demoPassword: seed.credentials.password,
+      },
+      'demo data seeded (public credentials, see README)'
+    );
+  } else {
+    logger.info({ reason: seed.reason }, 'demo seed skipped');
   }
 });
 

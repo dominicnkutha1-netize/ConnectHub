@@ -1,0 +1,54 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: Dashboard → New → Blueprint → pick this repo → Apply.
+# Render reads this file, builds the Dockerfile, and creates one free web
+# service. There is nothing to configure by hand.
+#
+# Why these settings:
+#   - one container serves the API, the WebSocket transport and the built
+#     client, so there is no second service and no CORS between them
+#   - the health check path is the liveness probe, not the readiness one: a
+#     failed readiness probe should drain traffic, not restart the process
+#   - JWT_SECRET is generated once by Render and kept across deploys, so
+#     sessions survive a redeploy (the disk does not)
+#   - SEED_DEMO rebuilds the demo network on every boot, because the free
+#     tier's filesystem is ephemeral
+
+services:
+  - type: web
+    name: connecthub
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Liveness, deliberately: Render restarts on failure, so this must only
+    # fail when the process itself is broken.
+    healthCheckPath: /healthz
+    # Deploy on every commit to main. Switch to `checksPass` once you trust the
+    # pipeline enough to make a red build block a deploy.
+    autoDeployTrigger: commit
+    # The app drains sockets and flushes its debounced write on SIGTERM.
+    # Render's default is 30s, which is plenty; this makes the intent explicit.
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_DEMO
+        value: "1"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      # One origin serves both the client and the API, so the allowlist is
+      # exactly this service's own public URL — not a wildcard. Render provides
+      # RENDER_EXTERNAL_URL at runtime and keeps it current, so the value does
+      # not have to be pasted in after the first deploy.
+      - key: CORS_ORIGINS
+        fromService:
+          name: connecthub
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

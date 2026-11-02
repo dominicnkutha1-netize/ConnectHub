@@ -91,6 +91,12 @@ const config = {
   maxUploadBytes: int(process.env.MAX_UPLOAD_BYTES, 5 * 1024 * 1024),
   bodyLimit: process.env.BODY_LIMIT || '100kb',
 
+  // Seeds a small demo network on boot, but only into an empty store. Used by
+  // the public deployment, where the filesystem is wiped between restarts.
+  seedDemo: ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.SEED_DEMO || '').trim().toLowerCase()
+  ),
+
   corsOrigins: parseOrigins(process.env.CORS_ORIGINS),
 
   // In production the API also serves the built React client, so one

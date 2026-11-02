@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-function makeClient() {
+function makeClient(env = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'connecthub-test-'));
 
   // Must be set before config/db are required for the first time.
@@ -23,6 +23,8 @@ function makeClient() {
   process.env.JWT_SECRET = 'test-secret-that-is-long-enough-to-be-accepted-by-config';
   process.env.DATA_DIR = path.join(root, 'data');
   process.env.UPLOADS_DIR = path.join(root, 'uploads');
+  // Per-file overrides, e.g. SEED_DEMO for the seed tests.
+  Object.assign(process.env, env);
 
   const request = require('supertest');
   const { createApp } = require('../app');
